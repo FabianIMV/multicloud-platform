@@ -32,7 +32,8 @@ Antes de comenzar, necesitar√°s instalar varias herramientas clave en tu estaci√
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # Instalar OpenTofu (antes Terraform Open Source)
-brew install opentofu/tap/opentofu
+brew update
+brew install opentofu
 
 # Instalar kubectl
 brew install kubectl
