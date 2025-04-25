@@ -1,181 +1,124 @@
-# Guía de Implementación: Multi-Cloud Platform Infrastructure with OpenTofu
+# Implementación Multi-Cloud con OpenTofu: Versión sin costo
 
-## Introducción
-
-Esta guía te llevará paso a paso por el proceso de desarrollo e implementación de una plataforma multi-cloud basada en herramientas open source. Está diseñada para ser exhaustiva y "a prueba de tontos", detallando cada fase del proyecto, desde la configuración inicial de tu repositorio hasta el despliegue completo de la infraestructura.
+Esta guía adaptada te permitirá implementar la arquitectura multi-cloud con herramientas open source sin incurrir en costos, y posteriormente escalarla fácilmente a entornos cloud cuando estés listo (aprovechando tus créditos de AWS).
 
 ## Tabla de Contenidos
 
-1. [Preparación del Entorno](#fase-1-preparación-del-entorno)
-2. [Configuración del Repositorio](#fase-2-configuración-del-repositorio)
-3. [Desarrollo de Infraestructura Base](#fase-3-desarrollo-de-infraestructura-base)
-4. [Implementación de Plataforma de Contenedores](#fase-4-implementación-de-plataforma-de-contenedores)
-5. [Configuración del Pipeline DevOps](#fase-5-configuración-del-pipeline-devops)
-6. [Implementación del Sistema de Observabilidad](#fase-6-implementación-del-sistema-de-observabilidad)
-7. [Implementación de Capa de Seguridad](#fase-7-implementación-de-capa-de-seguridad)
-8. [Documentación y Diagramas](#fase-8-documentación-y-diagramas)
-9. [Pruebas y Validación](#fase-9-pruebas-y-validación)
-10. [Extensión del Proyecto](#fase-10-extensión-del-proyecto)
+1. [Preparación del Entorno Local](#1-preparación-del-entorno-local)
+2. [Configuración del Repositorio](#2-configuración-del-repositorio)
+3. [Infraestructura Local con K3d](#3-infraestructura-local-con-k3d)
+4. [Plataforma de Contenedores](#4-plataforma-de-contenedores)
+5. [Pipeline DevOps Local](#5-pipeline-devops-local)
+6. [Sistema de Observabilidad](#6-sistema-de-observabilidad)
+7. [Capa de Seguridad](#7-capa-de-seguridad)
+8. [Documentación y Diagramas](#8-documentación-y-diagramas)
+9. [Migración a AWS](#9-migración-a-aws)
+10. [Extensiones Avanzadas](#10-extensiones-avanzadas)
 
----
+## 1. Preparación del Entorno Local
 
-## Fase 1: Preparación del Entorno
-
-### 1.1 Instalación de Herramientas Esenciales
-
-Antes de comenzar, necesitarás instalar varias herramientas clave en tu estación de trabajo local.
-
-#### Para Linux/macOS
+### 1.1 Instalar herramientas esenciales
 
 ```bash
-# Instalar Homebrew (macOS)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Instalar Docker
+# Para Linux (Ubuntu):
+sudo apt update
+sudo apt install docker.io docker-compose
+sudo usermod -aG docker $USER
+# Para macOS: Instalar Docker Desktop desde la web oficial
+# Para Windows: Instalar Docker Desktop con WSL2
 
-# Instalar OpenTofu (antes Terraform Open Source)
-brew update
-brew install opentofu
+# Instalar OpenTofu
+# Linux
+curl -Lo tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.6.0/tofu_1.6.0_linux_amd64.zip
+unzip tofu.zip && rm tofu.zip
+sudo mv tofu /usr/local/bin/
+# macOS
+brew install opentofu/tap/opentofu
 
 # Instalar kubectl
+# Linux
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+# macOS
 brew install kubectl
 
-# Instalar Docker
-# Para macOS: Instalar Docker Desktop desde la web oficial
-# Para Linux (Ubuntu):
-sudo apt-get update
-sudo apt-get install apt-transport-https ca-certificates curl software-properties-common
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io
+# Instalar K3d (K3s en Docker - mucho más ligero que minikube)
+curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
-# Instalar multipass para pruebas locales
-brew install --cask multipass
-
-# Instalar Git
-brew install git
+# Instalar Helm
+# Linux
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# macOS
+brew install helm
 ```
 
-#### Para Windows
-
-1. Instalar WSL2 (Windows Subsystem for Linux) siguiendo las instrucciones oficiales de Microsoft
-2. Instalar Ubuntu desde la Microsoft Store
-3. Seguir las instrucciones para Linux dentro de WSL2
-
-### 1.2 Configurar credenciales para proveedores cloud
-
-#### AWS
+### 1.2 Verificar instalaciones
 
 ```bash
-# Instalar AWS CLI
-pip install awscli --upgrade --user
-
-# Configurar credenciales AWS
-aws configure
-# Ingresar Access Key ID
-# Ingresar Secret Access Key
-# Ingresar Default region name (ej. us-west-2)
-# Ingresar Default output format (json)
-```
-
-#### DigitalOcean
-
-```bash
-# Instalar doctl (DigitalOcean CLI)
-brew install doctl
-
-# Autenticar con token de API
-doctl auth init
-# Ingresar el Personal Access Token generado en tu cuenta de DigitalOcean
-```
-
-### 1.3 Crear entorno local para pruebas
-
-```bash
-# Crear VM con multipass para pruebas locales
-multipass launch --name k3s-dev --memory 4G --disk 20G
-
-# Entrar en la VM
-multipass shell k3s-dev
-
-# Instalar herramientas básicas
-sudo apt update
-sudo apt install -y git curl wget unzip
-
-# Salir de la VM
-exit
-
-# O usar Lima para macOS (alternativa a multipass)
-brew install lima
-limactl start default
-```
-
-### 1.4 Verificar instalaciones
-
-```bash
-# Verificar OpenTofu
-tofu version
-
-# Verificar Docker
 docker --version
-
-# Verificar kubectl
+tofu version
 kubectl version --client
+k3d version
+helm version
 ```
 
----
+## 2. Configuración del Repositorio
 
-## Fase 2: Configuración del Repositorio
-
-### 2.1 Crear un nuevo repositorio en GitHub
+### 2.1 Crear repositorio en GitHub
 
 1. Accede a [GitHub](https://github.com) e inicia sesión
-2. Haz clic en el botón "+" en la esquina superior derecha y selecciona "New repository"
-3. Nombra tu repositorio: `multi-cloud-platform-opentofu`
-4. Agrega una descripción: "Multi-cloud platform infrastructure using OpenTofu and open source tools"
-5. Selecciona "Public" (o "Private" si prefieres)
-6. Marca "Add a README file"
-7. Selecciona la licencia MIT (o la que prefieras)
-8. Haz clic en "Create repository"
+2. Crea un nuevo repositorio llamado `multi-cloud-platform-opentofu`
+3. Marca "Add a README file" y elige la licencia MIT
 
-### 2.2 Clonar el repositorio localmente
+### 2.2 Clonar y estructurar el repositorio
 
 ```bash
 # Clonar el repositorio
 git clone https://github.com/tu-usuario/multi-cloud-platform-opentofu.git
 cd multi-cloud-platform-opentofu
-```
 
-### 2.3 Establecer la estructura inicial del proyecto
-
-```bash
-# Crear estructura de directorios básica
+# Crear estructura de directorios
 mkdir -p docs/diagrams docs/decision-records
+mkdir -p local-dev/k3d
 mkdir -p infrastructure/modules/{compute,networking,storage}
-mkdir -p infrastructure/{aws,digitalocean}
+mkdir -p infrastructure/{local,aws}
 mkdir -p platform/kubernetes/{cilium,monitoring,storage}
 mkdir -p platform/applications/{gitea,drone,vault}
-mkdir -p policies/{opa,network}
+mkdir -p policies/opa
 mkdir -p scripts
 
-# Crear archivos README iniciales
-echo "# Multi-Cloud Platform with OpenTofu" > README.md
-echo "Este proyecto implementa una arquitectura multi-cloud utilizando OpenTofu y herramientas open source." >> README.md
+# Crear README principal
+cat > README.md << 'EOF'
+# Multi-Cloud Platform Infrastructure
 
-echo "# Infrastructure Modules" > infrastructure/modules/README.md
-echo "# AWS Infrastructure" > infrastructure/aws/README.md
-echo "# DigitalOcean Infrastructure" > infrastructure/digitalocean/README.md
+Este proyecto implementa una arquitectura multi-cloud usando OpenTofu y herramientas open source:
 
-echo "# Kubernetes Platform" > platform/kubernetes/README.md
-echo "# Platform Applications" > platform/applications/README.md
+## Componentes principales
 
-echo "# Security Policies" > policies/README.md
+- **OpenTofu**: Infraestructura como código
+- **K3d/K3s**: Kubernetes ligero para desarrollo y producción
+- **Cilium**: Networking y service mesh
+- **MinIO**: Almacenamiento compatible con S3
+- **Gitea**: Git self-hosted
+- **Drone CI**: Pipelines de CI/CD
+- **Grafana/Prometheus/Loki**: Stack de observabilidad
+- **Vault**: Gestión de secretos
+- **OPA**: Políticas de seguridad
 
-echo "# Project Scripts" > scripts/README.md
-```
+## Características
 
-### 2.4 Crear un archivo .gitignore básico
+- Comienza con costo $0 en entorno local
+- Migra fácilmente a proveedores cloud
+- Arquitectura completamente open source
+- Documentación exhaustiva y buenas prácticas
 
-```bash
+## Estructura
+...
+EOF
+
+# Crear .gitignore
 cat > .gitignore << 'EOF'
 # OpenTofu
 **/.terraform/*
@@ -193,6 +136,10 @@ override.tf.json
 terraform.rc
 .terraform.lock.hcl
 
+# Kubernetes
+kubeconfig*
+*.kubeconfig
+
 # Secrets
 *.pem
 *.key
@@ -200,8 +147,6 @@ terraform.rc
 *.pfx
 .env
 secrets/
-kubeconfig
-*.kubeconfig
 
 # OS specific
 .DS_Store
@@ -214,794 +159,902 @@ Thumbs.db
 *.swo
 *~
 EOF
-```
 
-### 2.5 Primer commit y push
-
-```bash
+# Commit inicial
 git add .
-git commit -m "Initial project structure"
+git commit -m "Estructura inicial del proyecto"
 git push origin main
 ```
 
----
+## 3. Infraestructura Local con K3d
 
-## Fase 3: Desarrollo de Infraestructura Base
-
-### 3.1 Crear módulos reutilizables de OpenTofu
-
-Primero, vamos a desarrollar los módulos base que serán utilizados por múltiples proveedores.
-
-#### 3.1.1 Módulo de Networking
+### 3.1 Configurar entorno Kubernetes local
 
 ```bash
-# Crear archivos del módulo de networking
-mkdir -p infrastructure/modules/networking/vpc
-cat > infrastructure/modules/networking/vpc/main.tf << 'EOF'
-variable "name" {
-  description = "Name to be used on all the resources as identifier"
-  type        = string
-}
-
-variable "cidr" {
-  description = "The CIDR block for the VPC"
-  type        = string
-}
-
-variable "azs" {
-  description = "A list of availability zones in the region"
-  type        = list(string)
-  default     = []
-}
-
-variable "private_subnets" {
-  description = "A list of private subnets inside the VPC"
-  type        = list(string)
-  default     = []
-}
-
-variable "public_subnets" {
-  description = "A list of public subnets inside the VPC"
-  type        = list(string)
-  default     = []
-}
-
-variable "tags" {
-  description = "A map of tags to add to all resources"
-  type        = map(string)
-  default     = {}
-}
-
-# Outputs will be different for each cloud provider
-# This is just a template
-output "vpc_id" {
-  description = "The ID of the VPC"
-  value       = "PROVIDER_SPECIFIC"
-}
-
-output "private_subnet_ids" {
-  description = "List of IDs of private subnets"
-  value       = []
-}
-
-output "public_subnet_ids" {
-  description = "List of IDs of public subnets"
-  value       = []
-}
+# Crear archivo de configuración K3d
+cat > local-dev/k3d/cluster.yaml << 'EOF'
+apiVersion: k3d.io/v1alpha4
+kind: Simple
+metadata:
+  name: multi-cloud-cluster
+servers: 1
+agents: 2
+image: rancher/k3s:v1.27.4-k3s1
+ports:
+  - port: 80:80
+    nodeFilters:
+      - loadbalancer
+  - port: 443:443
+    nodeFilters:
+      - loadbalancer
+options:
+  k3d:
+    wait: true
+    timeout: "60s"
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+registries:
+  create:
+    name: registry.localhost
+    host: "0.0.0.0"
+    hostPort: "5000"
 EOF
 
-cat > infrastructure/modules/networking/security-groups/main.tf << 'EOF'
-variable "name" {
-  description = "Name to be used on all the resources as identifier"
-  type        = string
-}
+# Script para crear el cluster
+cat > scripts/create-local-cluster.sh << 'EOF'
+#!/bin/bash
+set -e
 
-variable "vpc_id" {
-  description = "The ID of the VPC"
-  type        = string
-}
+echo "Creando cluster K3d..."
+k3d cluster create --config local-dev/k3d/cluster.yaml
 
-variable "ingress_rules" {
-  description = "List of ingress rules"
-  type = list(object({
-    from_port   = number
-    to_port     = number
-    protocol    = string
-    cidr_blocks = list(string)
-    description = string
-  }))
-  default = []
-}
+echo "Esperando que el cluster esté listo..."
+kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
-variable "egress_rules" {
-  description = "List of egress rules"
-  type = list(object({
-    from_port   = number
-    to_port     = number
-    protocol    = string
-    cidr_blocks = list(string)
-    description = string
-  }))
-  default = [
-    {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
-      description = "Allow all outbound traffic"
+echo "Configurando kubectl y contexto..."
+kubectl config use-context k3d-multi-cloud-cluster
+
+echo "Cluster K3d listo y configurado!"
+kubectl get nodes
+EOF
+
+# Otorgar permisos de ejecución
+chmod +x scripts/create-local-cluster.sh
+
+# Crear el cluster local
+./scripts/create-local-cluster.sh
+```
+
+### 3.2 Definir modelos de infraestructura con OpenTofu
+
+```bash
+# Crear definición para entorno local
+cat > infrastructure/local/main.tf << 'EOF'
+terraform {
+  required_providers {
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.21"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.10"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
+  }
+}
+
+provider "kubernetes" {
+  config_path = "~/.kube/config"
+  config_context = "k3d-multi-cloud-cluster"
+}
+
+provider "helm" {
+  kubernetes {
+    config_path = "~/.kube/config"
+    config_context = "k3d-multi-cloud-cluster"
+  }
+}
+
+provider "kubectl" {
+  config_path = "~/.kube/config"
+  config_context = "k3d-multi-cloud-cluster"
+}
+
+resource "kubernetes_namespace" "platform" {
+  metadata {
+    name = "platform"
+  }
+}
+
+resource "kubernetes_namespace" "monitoring" {
+  metadata {
+    name = "monitoring"
+  }
+}
+
+resource "kubernetes_namespace" "security" {
+  metadata {
+    name = "security"
+  }
+}
+
+output "kubernetes_namespaces" {
+  value = [
+    kubernetes_namespace.platform.metadata[0].name,
+    kubernetes_namespace.monitoring.metadata[0].name,
+    kubernetes_namespace.security.metadata[0].name
   ]
 }
-
-# Provider-specific implementation will go here
-
-output "security_group_id" {
-  description = "The ID of the security group"
-  value       = "PROVIDER_SPECIFIC"
-}
 EOF
+
+# Inicializar y aplicar
+cd infrastructure/local
+tofu init
+tofu apply -auto-approve
+cd ../..
 ```
 
-#### 3.1.2 Módulo de Compute
+### 3.3 Crear módulos base compatibles con cloud
 
 ```bash
-# Crear archivos del módulo de compute
-mkdir -p infrastructure/modules/compute/virtual-machines
-cat > infrastructure/modules/compute/virtual-machines/main.tf << 'EOF'
+# Crear módulos reutilizables que funcionarán tanto en local como en cloud
+cat > infrastructure/modules/kubernetes/namespace/main.tf << 'EOF'
 variable "name" {
-  description = "Name to be used on all the resources as identifier"
+  description = "Namespace name"
   type        = string
 }
 
-variable "instance_count" {
-  description = "Number of instances to launch"
-  type        = number
-  default     = 1
-}
-
-variable "instance_type" {
-  description = "The type of instance to start"
-  type        = string
-}
-
-variable "subnet_ids" {
-  description = "The VPC Subnet IDs to launch in"
-  type        = list(string)
-}
-
-variable "security_group_ids" {
-  description = "A list of security group IDs to associate with"
-  type        = list(string)
-  default     = []
-}
-
-variable "user_data" {
-  description = "The user data to provide when launching the instance"
-  type        = string
-  default     = ""
-}
-
-variable "tags" {
-  description = "A map of tags to add to all resources"
+variable "labels" {
+  description = "Labels to apply to the namespace"
   type        = map(string)
   default     = {}
 }
 
-# Provider-specific implementation will go here
-
-output "instance_ids" {
-  description = "List of IDs of instances"
-  value       = []
+variable "annotations" {
+  description = "Annotations to apply to the namespace"
+  type        = map(string)
+  default     = {}
 }
 
-output "public_ips" {
-  description = "List of public IP addresses assigned to the instances"
-  value       = []
+resource "kubernetes_namespace" "this" {
+  metadata {
+    name        = var.name
+    labels      = var.labels
+    annotations = var.annotations
+  }
+}
+
+output "name" {
+  description = "The name of the namespace"
+  value       = kubernetes_namespace.this.metadata[0].name
 }
 EOF
-```
 
-#### 3.1.3 Módulo de Storage
-
-```bash
-# Crear archivos del módulo de storage
-mkdir -p infrastructure/modules/storage/object-storage
+# Crear módulo de almacenamiento
 cat > infrastructure/modules/storage/object-storage/main.tf << 'EOF'
 variable "name" {
-  description = "Name to be used for the bucket"
+  description = "Storage name identifier"
   type        = string
 }
 
-variable "versioning_enabled" {
-  description = "Whether to enable versioning"
-  type        = bool
-  default     = false
+variable "provider_type" {
+  description = "Type of provider (local, aws, digitalocean)"
+  type        = string
+  default     = "local"
 }
 
-variable "tags" {
-  description = "A map of tags to add to all resources"
-  type        = map(string)
-  default     = {}
+variable "size" {
+  description = "Storage size (for local PVC)"
+  type        = string
+  default     = "10Gi"
 }
 
-# Provider-specific implementation will go here
+# Este módulo implementará diferentes recursos según el provider_type
+# Ejemplo para local sería un PVC, para AWS sería S3, etc.
 
-output "bucket_id" {
-  description = "The ID of the bucket"
-  value       = "PROVIDER_SPECIFIC"
-}
-
-output "bucket_arn" {
-  description = "The ARN of the bucket"
-  value       = "PROVIDER_SPECIFIC"
-}
-EOF
-```
-
-### 3.2 Implementar módulos específicos para AWS
-
-#### 3.2.1 Proveedor de AWS
-
-```bash
-# Crear archivo de configuración del proveedor AWS
-cat > infrastructure/aws/providers.tf << 'EOF'
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.0"
+# Para entorno local (K3d)
+resource "kubernetes_persistent_volume_claim" "local_storage" {
+  count = var.provider_type == "local" ? 1 : 0
+  
+  metadata {
+    name = "${var.name}-pvc"
+    namespace = "platform"
+  }
+  
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = var.size
+      }
     }
-  }
-  # Si usas el backend S3, descomentar lo siguiente:
-  # backend "s3" {
-  #   bucket = "your-terraform-state-bucket"
-  #   key    = "multi-cloud-platform/terraform.tfstate"
-  #   region = "us-west-2"
-  # }
-}
-
-provider "aws" {
-  region = var.aws_region
-
-  # Default tags applied to all resources
-  default_tags {
-    tags = {
-      Environment = var.environment
-      Project     = "multi-cloud-platform"
-      ManagedBy   = "opentofu"
-    }
+    storage_class_name = "local-path"
   }
 }
 
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-west-2"
-}
+# Dummy para AWS - se expandirá cuando migremos
+# resource "aws_s3_bucket" "s3_storage" {
+#   count = var.provider_type == "aws" ? 1 : 0
+#   bucket = var.name
+# }
 
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
+output "storage_id" {
+  description = "ID of the created storage"
+  value = var.provider_type == "local" ? (
+    length(kubernetes_persistent_volume_claim.local_storage) > 0 ? 
+    kubernetes_persistent_volume_claim.local_storage[0].metadata[0].name : ""
+  ) : ""
 }
 EOF
 ```
 
-#### 3.2.2 VPC en AWS
+## 4. Plataforma de Contenedores
+
+### 4.1 Instalar Cilium para networking
 
 ```bash
-# Crear modulo VPC para AWS
-cat > infrastructure/aws/vpc.tf << 'EOF'
-module "vpc" {
-  source = "../modules/networking/vpc"
-
-  name = "${var.environment}-vpc"
-  cidr = "10.0.0.0/16"
-
-  azs             = ["${var.aws_region}a", "${var.aws_region}b", "${var.aws_region}c"]
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
-
-  tags = {
-    Terraform   = "true"
-    Environment = var.environment
-  }
-}
-
-resource "aws_vpc" "main" {
-  cidr_block           = module.vpc.cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
-  tags = {
-    Name = module.vpc.name
-  }
-}
-
-resource "aws_subnet" "private" {
-  count = length(module.vpc.private_subnets)
-
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = module.vpc.private_subnets[count.index]
-  availability_zone = module.vpc.azs[count.index]
-
-  tags = {
-    Name = "${module.vpc.name}-private-${count.index}"
-  }
-}
-
-resource "aws_subnet" "public" {
-  count = length(module.vpc.public_subnets)
-
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = module.vpc.public_subnets[count.index]
-  availability_zone       = module.vpc.azs[count.index]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${module.vpc.name}-public-${count.index}"
-  }
-}
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${module.vpc.name}-igw"
-  }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${module.vpc.name}-public-rt"
-  }
-}
-
-resource "aws_route" "public_internet_gateway" {
-  route_table_id         = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.main.id
-}
-
-resource "aws_route_table_association" "public" {
-  count = length(aws_subnet.public)
-
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_eip" "nat" {
-  vpc = true
-
-  tags = {
-    Name = "${module.vpc.name}-nat-eip"
-  }
-}
-
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
-
-  tags = {
-    Name = "${module.vpc.name}-nat-gw"
-  }
-}
-
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${module.vpc.name}-private-rt"
-  }
-}
-
-resource "aws_route" "private_nat_gateway" {
-  route_table_id         = aws_route_table.private.id
-  destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.main.id
-}
-
-resource "aws_route_table_association" "private" {
-  count = length(aws_subnet.private)
-
-  subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
-}
+# Crear manifest para Cilium
+cat > platform/kubernetes/cilium/values.yaml << 'EOF'
+ipam:
+  mode: kubernetes
+operator:
+  replicas: 1
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
 EOF
+
+# Crear script de instalación
+cat > scripts/install-cilium.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Instalando Cilium mediante Helm..."
+helm repo add cilium https://helm.cilium.io/
+helm repo update
+
+helm upgrade --install cilium cilium/cilium \
+  --version 1.14.1 \
+  --namespace kube-system \
+  -f platform/kubernetes/cilium/values.yaml
+
+echo "Esperando que Cilium esté listo..."
+kubectl -n kube-system wait --for=condition=Ready pod -l k8s-app=cilium-operator --timeout=120s
+kubectl -n kube-system wait --for=condition=Ready pod -l k8s-app=cilium --timeout=120s
+
+echo "Verificando estado de Cilium..."
+cilium_status=$(kubectl -n kube-system exec -ti ds/cilium -- cilium status)
+echo "$cilium_status"
+
+echo "Cilium instalado correctamente!"
+EOF
+
+chmod +x scripts/install-cilium.sh
+./scripts/install-cilium.sh
 ```
 
-#### 3.2.3 EC2 en AWS
+### 4.2 Configurar almacenamiento persistente con Longhorn
 
 ```bash
-# Crear módulo EC2 para AWS
-cat > infrastructure/aws/ec2.tf << 'EOF'
-module "ec2_cluster" {
-  source = "../modules/compute/virtual-machines"
+# Crear valores para Longhorn
+cat > platform/kubernetes/storage/values.yaml << 'EOF'
+defaultSettings:
+  defaultReplicaCount: 1  # Para entorno local es suficiente con 1 réplica
+  createDefaultDiskLabeledNodes: true
+persistence:
+  defaultClassReplicaCount: 1
+  reclaimPolicy: Retain
+EOF
 
-  name           = "${var.environment}-k3s-cluster"
-  instance_count = 3
-  instance_type  = "t3.medium"
-  subnet_ids     = aws_subnet.private[*].id
-  security_group_ids = [
-    aws_security_group.k3s.id
+# Script de instalación
+cat > scripts/install-longhorn.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Instalando Longhorn mediante Helm..."
+kubectl create namespace longhorn-system --dry-run=client -o yaml | kubectl apply -f -
+
+helm repo add longhorn https://charts.longhorn.io
+helm repo update
+
+helm upgrade --install longhorn longhorn/longhorn \
+  --namespace longhorn-system \
+  -f platform/kubernetes/storage/values.yaml
+
+echo "Esperando que Longhorn esté listo..."
+kubectl -n longhorn-system wait --for=condition=Ready pod -l app=longhorn-manager --timeout=180s
+
+echo "Configurando Longhorn como storage class por defecto..."
+kubectl patch storageclass longhorn -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+echo "Longhorn instalado correctamente!"
+kubectl get storageclass
+EOF
+
+chmod +x scripts/install-longhorn.sh
+./scripts/install-longhorn.sh
+```
+
+### 4.3 Implementar MinIO como alternativa a S3
+
+```bash
+# Instalar MinIO
+cat > platform/applications/minio/values.yaml << 'EOF'
+mode: standalone
+persistence:
+  size: 10Gi
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 1Gi
+    cpu: 500m
+rootUser: "admin"
+rootPassword: "minioadmin"  # Cambiar en entorno real
+consoleService:
+  type: ClusterIP
+service:
+  type: ClusterIP
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hostname: minio.local
+EOF
+
+# Configuración con OpenTofu
+cat > infrastructure/local/storage.tf << 'EOF'
+resource "helm_release" "minio" {
+  name       = "minio"
+  repository = "https://charts.min.io/"
+  chart      = "minio"
+  version    = "5.0.7"
+  namespace  = kubernetes_namespace.platform.metadata[0].name
+
+  values = [
+    file("../../platform/applications/minio/values.yaml")
+  ]
+}
+
+output "minio_service" {
+  value = "minio.${kubernetes_namespace.platform.metadata[0].name}.svc.cluster.local"
+}
+EOF
+
+# Actualizar configuración
+cd infrastructure/local
+tofu init
+tofu apply -auto-approve
+cd ../..
+```
+
+## 5. Pipeline DevOps Local
+
+### 5.1 Instalar Gitea como sistema de control de versiones
+
+```bash
+# Configuración de Gitea
+cat > platform/applications/gitea/values.yaml << 'EOF'
+gitea:
+  admin:
+    username: gitea_admin
+    password: gitea_admin  # Cambiar en entorno real
+    email: "admin@example.com"
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+service:
+  http:
+    type: ClusterIP
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: gitea.local
+      paths:
+        - path: /
+          pathType: Prefix
+EOF
+
+# Archivo OpenTofu para Gitea
+cat > infrastructure/local/gitea.tf << 'EOF'
+resource "helm_release" "gitea" {
+  name       = "gitea"
+  repository = "https://dl.gitea.io/charts/"
+  chart      = "gitea"
+  version    = "8.3.0"
+  namespace  = kubernetes_namespace.platform.metadata[0].name
+
+  values = [
+    file("../../platform/applications/gitea/values.yaml")
+  ]
+}
+
+output "gitea_service" {
+  value = "gitea-http.${kubernetes_namespace.platform.metadata[0].name}.svc.cluster.local"
+}
+EOF
+
+# Aplicar cambios
+cd infrastructure/local
+tofu apply -auto-approve
+cd ../..
+```
+
+### 5.2 Instalar Drone CI para pipelines
+
+```bash
+# Crear valores para Drone
+cat > platform/applications/drone/values.yaml << 'EOF'
+service:
+  type: ClusterIP
+
+sourceControl:
+  provider: gitea
+  gitea:
+    server: http://gitea-http.platform.svc.cluster.local:3000
+    clientID: "client-id-to-update"
+    clientSecret: "client-secret-to-update"
+
+server:
+  host: drone.local
+  adminUser: "gitea_admin"
+  
+persistence:
+  enabled: true
+  size: 1Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: drone.local
+      paths:
+        - path: /
+          pathType: Prefix
+EOF
+
+# Nota: Para instalar Drone, primero debes crear una aplicación OAuth en Gitea
+# y actualizar los valores clientID y clientSecret en el archivo values.yaml
+
+# Crear script para la configuración
+cat > scripts/setup-drone.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Para continuar, primero debes crear una aplicación OAuth en Gitea."
+echo "1. Abre Gitea en tu navegador (configura tu archivo hosts o usa port-forward)"
+echo "2. Inicia sesión con las credenciales de administrador"
+echo "3. Ve a Site Administration -> Applications"
+echo "4. Crea una nueva aplicación OAuth con:"
+echo "   - Nombre: Drone"
+echo "   - Redirect URL: http://drone.local/login"
+echo "5. Anota el Client ID y Client Secret"
+
+read -p "¿Has creado la aplicación OAuth? (s/n): " answer
+if [ "$answer" != "s" ]; then
+  echo "Configura la aplicación OAuth antes de continuar."
+  exit 1
+fi
+
+read -p "Ingresa el Client ID: " client_id
+read -p "Ingresa el Client Secret: " client_secret
+
+# Actualizar valores
+sed -i "s/client-id-to-update/$client_id/g" platform/applications/drone/values.yaml
+sed -i "s/client-secret-to-update/$client_secret/g" platform/applications/drone/values.yaml
+
+echo "Valores actualizados. Ahora puedes aplicar la configuración con OpenTofu."
+EOF
+
+chmod +x scripts/setup-drone.sh
+
+# Archivo OpenTofu para Drone CI
+cat > infrastructure/local/drone.tf << 'EOF'
+resource "helm_release" "drone" {
+  name       = "drone"
+  repository = "https://charts.drone.io"
+  chart      = "drone"
+  version    = "0.5.0"
+  namespace  = kubernetes_namespace.platform.metadata[0].name
+
+  values = [
+    file("../../platform/applications/drone/values.yaml")
   ]
 
-  user_data = <<-EOF
-    #!/bin/bash
-    export INSTALL_K3S_VERSION=v1.25.5+k3s1
-    curl -sfL https://get.k3s.io | sh -
-  EOF
-
-  tags = {
-    Terraform   = "true"
-    Environment = var.environment
-  }
+  depends_on = [
+    helm_release.gitea
+  ]
 }
 
-resource "aws_instance" "k3s_server" {
-  count = module.ec2_cluster.instance_count
+resource "helm_release" "drone_runner" {
+  name       = "drone-runner-kube"
+  repository = "https://charts.drone.io"
+  chart      = "drone-runner-kube"
+  version    = "0.5.0"
+  namespace  = kubernetes_namespace.platform.metadata[0].name
 
-  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (replace with the latest)
-  instance_type = module.ec2_cluster.instance_type
-  subnet_id     = module.ec2_cluster.subnet_ids[count.index % length(module.ec2_cluster.subnet_ids)]
-
-  vpc_security_group_ids = module.ec2_cluster.security_group_ids
-
-  user_data = module.ec2_cluster.user_data
-
-  root_block_device {
-    volume_size = 50
-    volume_type = "gp3"
+  set {
+    name  = "env.DRONE_RPC_HOST"
+    value = "drone.${kubernetes_namespace.platform.metadata[0].name}.svc.cluster.local"
   }
 
-  tags = merge(
+  set {
+    name  = "env.DRONE_RPC_PROTO"
+    value = "http"
+  }
+
+  set {
+    name  = "env.DRONE_RPC_SECRET"
+    value = "secret-to-change"  # Cambiar en entorno real
+  }
+
+  depends_on = [
+    helm_release.drone
+  ]
+}
+EOF
+```
+
+## 6. Sistema de Observabilidad
+
+### 6.1 Instalar stack Prometheus, Grafana y Loki
+
+```bash
+# Crear valores para Kube Prometheus Stack
+cat > platform/kubernetes/monitoring/values.yaml << 'EOF'
+grafana:
+  persistence:
+    enabled: true
+    size: 2Gi
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.local
+
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+EOF
+
+# Valores para Loki
+cat > platform/kubernetes/monitoring/loki-values.yaml << 'EOF'
+loki:
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  auth_enabled: false
+  
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hosts:
+    - host: loki.local
+      paths:
+        - path: /
+          pathType: Prefix
+EOF
+
+# Script de instalación
+cat > scripts/install-monitoring.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Instalando Nginx Ingress Controller..."
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-system --create-namespace
+
+echo "Instalando Prometheus Stack..."
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  -f platform/kubernetes/monitoring/values.yaml
+
+echo "Instalando Loki..."
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+helm upgrade --install loki grafana/loki-stack \
+  --namespace monitoring \
+  -f platform/kubernetes/monitoring/loki-values.yaml
+
+echo "Stack de monitoreo instalado correctamente!"
+echo "Puedes acceder a Grafana en: http://grafana.local"
+echo "Usuario por defecto: admin"
+echo "Contraseña por defecto: prom-operator"
+EOF
+
+chmod +x scripts/install-monitoring.sh
+./scripts/install-monitoring.sh
+```
+
+### 6.2 Configurar dashboard para la plataforma
+
+```bash
+# Crear dashboard de Grafana para la plataforma
+cat > platform/kubernetes/monitoring/platform-dashboard.json << 'EOF'
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": 10,
+  "links": [],
+  "panels": [
     {
-      Name = "${module.ec2_cluster.name}-${count.index}"
-    },
-    module.ec2_cluster.tags
-  )
-}
-
-resource "aws_security_group" "k3s" {
-  name        = "${var.environment}-k3s-sg"
-  description = "Security group for K3s cluster"
-  vpc_id      = aws_vpc.main.id
-
-  # Allow all internal traffic
-  ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = [aws_vpc.main.cidr_block]
-    description = "Allow all internal traffic"
-  }
-
-  # SSH from bastion
-  ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.bastion.id]
-    description     = "SSH from bastion"
-  }
-
-  # Allow all outbound traffic
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
-  tags = {
-    Name        = "${var.environment}-k3s-sg"
-    Terraform   = "true"
-    Environment = var.environment
-  }
-}
-
-resource "aws_security_group" "bastion" {
-  name        = "${var.environment}-bastion-sg"
-  description = "Security group for bastion host"
-  vpc_id      = aws_vpc.main.id
-
-  # SSH from anywhere (you might want to restrict this)
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SSH from anywhere"
-  }
-
-  # Allow all outbound traffic
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
-  tags = {
-    Name        = "${var.environment}-bastion-sg"
-    Terraform   = "true"
-    Environment = var.environment
-  }
-}
-
-resource "aws_instance" "bastion" {
-  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (replace with the latest)
-  instance_type = "t3.micro"
-  subnet_id     = aws_subnet.public[0].id
-
-  vpc_security_group_ids = [aws_security_group.bastion.id]
-
-  associate_public_ip_address = true
-
-  key_name = aws_key_pair.deployer.key_name
-
-  tags = {
-    Name        = "${var.environment}-bastion"
-    Terraform   = "true"
-    Environment = var.environment
-  }
-}
-
-resource "aws_key_pair" "deployer" {
-  key_name   = "${var.environment}-deployer-key"
-  public_key = file("~/.ssh/id_rsa.pub") # Make sure this file exists!
-
-  tags = {
-    Terraform   = "true"
-    Environment = var.environment
-  }
-}
-
-output "bastion_public_ip" {
-  description = "Public IP of the bastion host"
-  value       = aws_instance.bastion.public_ip
-}
-
-output "k3s_server_private_ips" {
-  description = "Private IPs of K3s servers"
-  value       = aws_instance.k3s_server[*].private_ip
-}
-EOF
-```
-
-#### 3.2.4 S3 en AWS
-
-```bash
-# Crear módulo S3 para AWS
-cat > infrastructure/aws/s3.tf << 'EOF'
-module "state_bucket" {
-  source = "../modules/storage/object-storage"
-
-  name               = "${var.environment}-state-bucket"
-  versioning_enabled = true
-
-  tags = {
-    Terraform   = "true"
-    Environment = var.environment
-  }
-}
-
-resource "aws_s3_bucket" "state_bucket" {
-  bucket = "${var.environment}-state-bucket-${data.aws_caller_identity.current.account_id}"
-
-  tags = module.state_bucket.tags
-}
-
-resource "aws_s3_bucket_versioning" "state_bucket" {
-  bucket = aws_s3_bucket.state_bucket.id
-  versioning_configuration {
-    status = module.state_bucket.versioning_enabled ? "Enabled" : "Disabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "state_bucket" {
-  bucket = aws_s3_bucket.state_bucket.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      "datasource": null,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "7.5.5",
+      "targets": [
+        {
+          "expr": "sum(kube_pod_container_resource_requests{namespace=~\"platform|monitoring|security\"}) by (namespace)",
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "Recursos por Namespace",
+      "type": "gauge"
     }
-  }
-}
-
-data "aws_caller_identity" "current" {}
-
-output "state_bucket_name" {
-  description = "The name of the S3 bucket for state storage"
-  value       = aws_s3_bucket.state_bucket.bucket
-}
-EOF
-```
-
-### 3.3 Implementar módulos específicos para DigitalOcean
-
-#### 3.3.1 Proveedor de DigitalOcean
-
-```bash
-# Crear archivo de configuración del proveedor DigitalOcean
-cat > infrastructure/digitalocean/providers.tf << 'EOF'
-terraform {
-  required_providers {
-    digitalocean = {
-      source  = "digitalocean/digitalocean"
-      version = "~> 2.0"
-    }
-  }
-  # Si usas el backend S3, descomentar lo siguiente:
-  # backend "s3" {
-  #   bucket = "your-terraform-state-bucket"
-  #   key    = "multi-cloud-platform/do/terraform.tfstate"
-  #   region = "us-west-2"
-  # }
-}
-
-provider "digitalocean" {
-  # Token is loaded from DIGITALOCEAN_TOKEN environment variable or in variables.tf
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
-}
-
-variable "region" {
-  description = "DigitalOcean region"
-  type        = string
-  default     = "nyc3"
-}
-
-variable "do_token" {
-  description = "DigitalOcean API token"
-  type        = string
-  sensitive   = true
+  ],
+  "refresh": "10s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Platform Overview",
+  "uid": "platform-overview",
+  "version": 1
 }
 EOF
+
+# Script para importar dashboard
+cat > scripts/import-dashboards.sh << 'EOF'
+#!/bin/bash
+set -e
+
+# Obtener pod de Grafana
+GRAFANA_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath="{.items[0].metadata.name}")
+
+# Importar dashboard
+kubectl cp platform/kubernetes/monitoring/platform-dashboard.json monitoring/$GRAFANA_POD:/tmp/dashboard.json
+kubectl exec -n monitoring $GRAFANA_POD -- curl -X POST -H "Content-Type: application/json" -d @/tmp/dashboard.json http://admin:prom-operator@localhost:3000/api/dashboards/db
+
+echo "Dashboard importado correctamente!"
+EOF
+
+chmod +x scripts/import-dashboards.sh
 ```
 
-#### 3.3.2 VPC en DigitalOcean
+## 7. Capa de Seguridad
+
+### 7.1 Instalar Vault para gestión de secretos
 
 ```bash
-# Crear módulo VPC para DigitalOcean
-cat > infrastructure/digitalocean/vpc.tf << 'EOF'
-resource "digitalocean_vpc" "main" {
-  name        = "${var.environment}-vpc"
-  region      = var.region
-  description = "${var.environment} VPC"
-  ip_range    = "10.10.0.0/16"
+# Crear valores para Vault
+cat > platform/applications/vault/values.yaml << 'EOF'
+server:
+  dev:
+    enabled: true  # Solo para desarrollo
+  
+  standalone:
+    enabled: true
+  
+  dataStorage:
+    enabled: true
+    size: 1Gi
+    storageClass: longhorn
+  
+  service:
+    enabled: true
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - host: vault.local
+        paths:
+          - path: /
+            pathType: Prefix
+EOF
+
+# Archivo OpenTofu para Vault
+cat > infrastructure/local/vault.tf << 'EOF'
+resource "helm_release" "vault" {
+  name       = "vault"
+  repository = "https://helm.releases.hashicorp.com"
+  chart      = "vault"
+  version    = "0.25.0"
+  namespace  = kubernetes_namespace.security.metadata[0].name
+
+  values = [
+    file("../../platform/applications/vault/values.yaml")
+  ]
 }
 
-output "vpc_id" {
-  description = "The ID of the VPC"
-  value       = digitalocean_vpc.main.id
-}
-
-output "vpc_ip_range" {
-  description = "The range of IP addresses for the VPC"
-  value       = digitalocean_vpc.main.ip_range
+output "vault_service" {
+  value = "vault.${kubernetes_namespace.security.metadata[0].name}.svc.cluster.local"
 }
 EOF
+
+# Aplicar cambios
+cd infrastructure/local
+tofu apply -auto-approve
+cd ../..
 ```
 
-#### 3.3.3 Droplets en DigitalOcean
+### 7.2 Configurar OPA para políticas
 
 ```bash
-# Crear módulo Droplets para DigitalOcean
-cat > infrastructure/digitalocean/droplets.tf << 'EOF'
-data "digitalocean_ssh_key" "deployer" {
-  name = "deployer-key" # Make sure this key exists in your DO account!
-}
+# Crear valores para OPA/Gatekeeper
+cat > platform/kubernetes/opa/values.yaml << 'EOF'
+replicas: 1
+controllerManager:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+audit:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+EOF
 
-resource "digitalocean_droplet" "k3s_server" {
-  count = 3
+# Crear una política de ejemplo para OPA
+cat > policies/opa/require-labels.yaml << 'EOF'
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: requiredlabels
+spec:
+  crd:
+    spec:
+      names:
+        kind: RequiredLabels
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package requiredlabels
 
-  image     = "ubuntu-20-04-x64"
-  name      = "${var.environment}-k3s-server-${count.index}"
-  region    = var.region
-  size      = "s-2vcpu-4gb"
-  vpc_uuid  = digitalocean_vpc.main.id
-  ssh_keys  = [data.digitalocean_ssh_key.deployer.id]
-  monitoring = true
+        violation[{"msg": msg}] {
+          provided := {label | input.review.object.metadata.labels[label]}
+          required := {label | label := input.parameters.labels[_]}
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("Missing required labels: %v", [missing])
+        }
+EOF
 
-  user_data = <<-EOF
-    #!/bin/bash
-    export INSTALL_K3S_VERSION=v1.25.5+k3s1
-    curl -sfL https://get.k3s.io | sh -
-  EOF
+# Instalar OPA/Gatekeeper
+cat > scripts/install-opa.sh << 'EOF'
+#!/bin/bash
+set -e
 
-  tags = ["${var.environment}", "k3s", "server"]
-}
+echo "Instalando OPA Gatekeeper..."
+helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+helm repo update
+helm upgrade --install gatekeeper gatekeeper/gatekeeper \
+  --namespace security \
+  -f platform/kubernetes/opa/values.yaml
 
-resource "digitalocean_droplet" "bastion" {
-  image     = "ubuntu-20-04-x64"
-  name      = "${var.environment}-bastion"
-  region    = var.region
-  size      = "s-1vcpu-1gb"
-  vpc_uuid  = digitalocean_vpc.main.id
-  ssh_keys  = [data.digitalocean_ssh_key.deployer.id]
-  monitoring = true
+echo "Esperando que OPA esté listo..."
+kubectl -n security wait --for=condition=Ready pod -l control-plane=controller-manager --timeout=120s
 
-  tags = ["${var.environment}", "bastion"]
-}
+echo "Aplicando política de ejemplo..."
+kubectl apply -f policies/opa/require-labels.yaml
 
-resource "digitalocean_firewall" "k3s" {
-  name = "${var.environment}-k3s-firewall"
+echo "OPA/Gatekeeper instalado correctamente!"
+EOF
 
-  tags = ["${var.environment}", "k3s"]
-
-  # Allow internal VPC traffic
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "1-65535"
-    source_addresses = [digitalocean_vpc.main.ip_range]
-  }
-
-  inbound_rule {
-    protocol         = "udp"
-    port_range       = "1-65535"
-    source_addresses = [digitalocean_vpc.main.ip_range]
-  }
-
-  # Allow SSH from bastion
-  inbound_rule {
-    protocol           = "tcp"
-    port_range         = "22"
-    source_droplet_ids = [digitalocean_droplet.bastion.id]
-  }
-
-  # Allow all outbound traffic
-  outbound_rule {
-    protocol              = "tcp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "udp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "icmp"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-}
-
-resource "digitalocean_firewall" "bastion" {
-  name = "${var.environment}-bastion-firewall"
-
-  tags = ["${var.environment}", "bastion"]
-
-  # Allow SSH from anywhere
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "22"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  # Allow all outbound traffic
-  outbound_rule {
-    protocol              = "tcp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "udp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "icmp"
-    destination_
+chmod +x scripts/install-opa.sh
+./scripts/install-opa.
