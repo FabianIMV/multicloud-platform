@@ -200,7 +200,7 @@ registries:
   create:
     name: registry.localhost
     host: "0.0.0.0"
-    hostPort: "5000"
+    hostPort: "5001"
 EOF
 
 # Script para crear el cluster

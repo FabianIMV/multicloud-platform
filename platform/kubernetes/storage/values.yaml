@@ -1,0 +1,6 @@
+defaultSettings:
+  defaultReplicaCount: 1  # Para entorno local es suficiente con 1 réplica
+  createDefaultDiskLabeledNodes: true
+persistence:
+  defaultClassReplicaCount: 1
+  reclaimPolicy: Retain

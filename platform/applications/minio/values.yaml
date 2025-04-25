@@ -1,0 +1,20 @@
+mode: standalone
+persistence:
+  size: 4Gi
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: 200m
+rootUser: "admin"
+rootPassword: "minioadmin"  # Cambiar en entorno real
+consoleService:
+  type: ClusterIP
+service:
+  type: ClusterIP
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hostname: minio.local
